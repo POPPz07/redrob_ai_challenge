@@ -1,0 +1,183 @@
+﻿from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import joblib
+import numpy as np
+import pandas as pd
+from scipy import sparse
+from sklearn.decomposition import TruncatedSVD
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.preprocessing import normalize
+
+from redrob_ranker.features import ASPECT_QUERIES, NUMERIC_FEATURES, extract_features, pseudo_label
+from redrob_ranker.neural_retrieval import MODEL_PATH, build_neural_artifacts
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Precompute Redrob ranker artifacts.")
+    parser.add_argument("--candidates", default="India_runs_data_and_ai_challenge/candidates.jsonl")
+    parser.add_argument("--artifacts-dir", default="artifacts")
+    parser.add_argument("--max-features", type=int, default=70000)
+    parser.add_argument("--svd-dim", type=int, default=192)
+    parser.add_argument("--skip-model", action="store_true")
+    parser.add_argument("--skip-neural", action="store_true")
+    parser.add_argument("--model-path", default=str(MODEL_PATH))
+    parser.add_argument("--embedding-batch-size", type=int, default=128)
+    return parser.parse_args()
+
+
+def load_candidates(path: Path) -> pd.DataFrame:
+    rows = []
+    started = time.perf_counter()
+    with path.open("r", encoding="utf-8") as f:
+        for i, line in enumerate(f, 1):
+            if line.strip():
+                rows.append(extract_features(json.loads(line)))
+            if i % 25000 == 0:
+                print(f"parsed {i:,} candidates in {time.perf_counter() - started:.1f}s")
+    return pd.DataFrame(rows)
+
+
+def train_ranker(features: pd.DataFrame, artifacts_dir: Path) -> tuple[bool, list[str]]:
+    feature_cols = list(NUMERIC_FEATURES) + [
+        "sparse_score",
+        "dense_score",
+        "rule_recall_score",
+        "colbert_maxsim_score",
+        "colbert_retrieval_score",
+        "colbert_ranking_score",
+        "colbert_eval_score",
+        "colbert_production_ml_score",
+        "colbert_python_score",
+    ]
+    train = features.copy()
+    for col in feature_cols:
+        if col not in train:
+            train[col] = 0.0
+    y = np.array([pseudo_label(row) for row in train.to_dict("records")], dtype=np.float32)
+    X = train[feature_cols].astype(np.float32).to_numpy()
+    try:
+        from xgboost import XGBRegressor
+
+        model = XGBRegressor(
+            n_estimators=160,
+            max_depth=4,
+            learning_rate=0.045,
+            subsample=0.88,
+            colsample_bytree=0.86,
+            objective="reg:squarederror",
+            n_jobs=4,
+            random_state=42,
+            tree_method="hist",
+        )
+        model.fit(X, y)
+        joblib.dump({"model": model, "feature_cols": feature_cols}, artifacts_dir / "ranker_model.joblib")
+        return True, feature_cols
+    except Exception as exc:
+        print(f"ranker model training skipped: {exc}")
+        return False, feature_cols
+
+
+def main() -> None:
+    args = parse_args()
+    candidates_path = Path(args.candidates)
+    artifacts_dir = Path(args.artifacts_dir)
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    started = time.perf_counter()
+
+    df = load_candidates(candidates_path)
+    print(f"loaded {len(df):,} candidates")
+
+    text_cols = ["candidate_id", "career_text", "profile_text", "skills_text", "evidence_text", "all_text"]
+    feature_keep = [
+        c
+        for c in df.columns
+        if c not in {"career_text", "profile_text", "skills_text", "evidence_text", "all_text"}
+    ]
+    df[text_cols].to_parquet(artifacts_dir / "candidate_text_views.parquet", index=False)
+    df[feature_keep].to_parquet(artifacts_dir / "candidates_features.parquet", index=False)
+
+    retrieval_text = (
+        df["evidence_text"].fillna("")
+        + " "
+        + df["career_text"].fillna("")
+        + " "
+        + df["profile_text"].fillna("")
+        + " "
+        + df["skills_text"].fillna("")
+    ).tolist()
+    vectorizer = TfidfVectorizer(
+        lowercase=True,
+        strip_accents="unicode",
+        ngram_range=(1, 2),
+        min_df=2,
+        max_df=0.90,
+        max_features=args.max_features,
+        sublinear_tf=True,
+        norm="l2",
+        dtype=np.float32,
+    )
+    tfidf = vectorizer.fit_transform(retrieval_text)
+    sparse.save_npz(artifacts_dir / "tfidf_matrix.npz", tfidf)
+    joblib.dump(vectorizer, artifacts_dir / "tfidf_vectorizer.joblib")
+
+    svd_dim = min(args.svd_dim, max(2, tfidf.shape[1] - 1))
+    svd = TruncatedSVD(n_components=svd_dim, random_state=42)
+    dense = svd.fit_transform(tfidf)
+    dense = normalize(dense, norm="l2", copy=False).astype(np.float32)
+    np.save(artifacts_dir / "dense_embeddings.npy", dense)
+    joblib.dump(svd, artifacts_dir / "dense_svd.joblib")
+
+    model_ok = False
+    feature_cols: list[str] = []
+
+    metadata = {
+        "candidate_count": int(len(df)),
+        "tfidf_shape": list(tfidf.shape),
+        "svd_dim": int(svd_dim),
+        "model_available": model_ok,
+        "feature_columns": feature_cols,
+        "aspect_queries": ASPECT_QUERIES,
+        "faiss_available": False,
+        "colbert_available": False,
+        "elapsed_seconds": round(time.perf_counter() - started, 3),
+    }
+    if not args.skip_neural:
+        neural_metadata = build_neural_artifacts(
+            df[text_cols],
+            artifacts_dir,
+            " ".join(ASPECT_QUERIES.values()),
+            model_path=Path(args.model_path),
+            batch_size=args.embedding_batch_size,
+        )
+        metadata.update(neural_metadata)
+    if not args.skip_model:
+        subprocess.run(
+            [
+                sys.executable,
+                "retrain_ranker.py",
+                "--artifacts-dir",
+                str(artifacts_dir),
+            ],
+            check=True,
+        )
+        payload = joblib.load(artifacts_dir / "ranker_model.joblib")
+        model_ok = True
+        feature_cols = payload["feature_cols"]
+        metadata["model_available"] = model_ok
+        metadata["feature_columns"] = feature_cols
+    (artifacts_dir / "precompute_metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    print(json.dumps(metadata, indent=2))
+
+
+if __name__ == "__main__":
+    main()
+
+
+

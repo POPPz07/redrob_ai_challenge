@@ -1,0 +1,51 @@
+﻿team_name: "Bug Solvers"
+
+primary_contact:
+  name: "TODO"
+  email: "TODO"
+  phone: "TODO"
+
+team_members:
+  - name: "TODO"
+    email: "TODO"
+    role: "TODO"
+
+github_repo: "https://github.com/POPPz07/redrob_ai_challenge.git"
+sandbox_link: "TODO"
+reproduce_command: "python rank.py --candidates ./candidates.jsonl --out ./submission.csv"
+
+compute:
+  platform: "Local Windows laptop"
+  cpu_cores: 16
+  ram_gb: 0  # TODO: replace with installed RAM
+  python_version: "3.11"
+  os: "Windows"
+  uses_gpu_for_inference: false
+  has_network_during_ranking: false
+  pre_computation_required: true
+  pre_computation_time_minutes: 66
+
+ai_tools_used:
+  - "OpenAI Codex"
+
+ai_usage_summary: |
+  OpenAI Codex was used for architecture research, implementation, debugging,
+  testing, and documentation. Candidate ranking runs locally without hosted
+  LLM or API calls.
+
+methodology_summary: |
+  CPU-only deterministic hybrid candidate ranker. It extracts career,
+  profile, weighted-skill, and compressed evidence views; combines TF-IDF,
+  BGE sentence embeddings with a compact FAISS index, exact rule/title recall,
+  structured product/retrieval/production/evaluation features, behavioral
+  availability, and consistency/honeypot penalties; and applies an XGBoost
+  pseudo-relevance reranker with a transparent formula fallback. Final
+  reasoning is generated only from stored candidate facts and evidence.
+
+declarations:
+  read_submission_spec: true
+  code_is_original_work: true
+  no_collusion: true
+  honeypot_check_done: true
+  reproduction_tested: true
+

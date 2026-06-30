@@ -1,0 +1,9 @@
+artifacts/dense_embeddings.npy filter=lfs diff=lfs merge=lfs -text
+artifacts/dense_query_embedding.npy filter=lfs diff=lfs merge=lfs -text
+artifacts/ranker_model.joblib filter=lfs diff=lfs merge=lfs -text
+artifacts/candidates_features.parquet filter=lfs diff=lfs merge=lfs -text
+artifacts/tfidf_vectorizer.joblib filter=lfs diff=lfs merge=lfs -text
+artifacts/tfidf_matrix.npz filter=lfs diff=lfs merge=lfs -text
+artifacts/dense_svd.joblib filter=lfs diff=lfs merge=lfs -text
+artifacts/candidate_text_views.parquet filter=lfs diff=lfs merge=lfs -text
+artifacts/dense_index.faiss filter=lfs diff=lfs merge=lfs -text
