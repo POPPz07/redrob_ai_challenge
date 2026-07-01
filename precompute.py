@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import json
@@ -15,7 +15,7 @@ from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import normalize
 
-from redrob_ranker.features import ASPECT_QUERIES, NUMERIC_FEATURES, extract_features, pseudo_label
+from redrob_ranker.features import ASPECT_QUERIES, extract_features
 from redrob_ranker.neural_retrieval import MODEL_PATH, build_neural_artifacts
 
 
@@ -43,45 +43,6 @@ def load_candidates(path: Path) -> pd.DataFrame:
                 print(f"parsed {i:,} candidates in {time.perf_counter() - started:.1f}s")
     return pd.DataFrame(rows)
 
-
-def train_ranker(features: pd.DataFrame, artifacts_dir: Path) -> tuple[bool, list[str]]:
-    feature_cols = list(NUMERIC_FEATURES) + [
-        "sparse_score",
-        "dense_score",
-        "rule_recall_score",
-        "colbert_maxsim_score",
-        "colbert_retrieval_score",
-        "colbert_ranking_score",
-        "colbert_eval_score",
-        "colbert_production_ml_score",
-        "colbert_python_score",
-    ]
-    train = features.copy()
-    for col in feature_cols:
-        if col not in train:
-            train[col] = 0.0
-    y = np.array([pseudo_label(row) for row in train.to_dict("records")], dtype=np.float32)
-    X = train[feature_cols].astype(np.float32).to_numpy()
-    try:
-        from xgboost import XGBRegressor
-
-        model = XGBRegressor(
-            n_estimators=160,
-            max_depth=4,
-            learning_rate=0.045,
-            subsample=0.88,
-            colsample_bytree=0.86,
-            objective="reg:squarederror",
-            n_jobs=4,
-            random_state=42,
-            tree_method="hist",
-        )
-        model.fit(X, y)
-        joblib.dump({"model": model, "feature_cols": feature_cols}, artifacts_dir / "ranker_model.joblib")
-        return True, feature_cols
-    except Exception as exc:
-        print(f"ranker model training skipped: {exc}")
-        return False, feature_cols
 
 
 def main() -> None:
@@ -178,6 +139,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-
-

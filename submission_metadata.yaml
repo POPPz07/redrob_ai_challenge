@@ -1,4 +1,4 @@
-﻿team_name: "Bug Solvers"
+team_name: "Bug Solvers"
 
 primary_contact:
   name: "TODO"
@@ -12,7 +12,7 @@ team_members:
 
 github_repo: "https://github.com/POPPz07/redrob_ai_challenge.git"
 sandbox_link: "TODO"
-reproduce_command: "python rank.py --candidates ./candidates.jsonl --out ./submission.csv"
+reproduce_command: "python reproduce.py --candidates ./candidates.jsonl --out ./submission.csv"
 
 compute:
   platform: "Local Windows laptop"
@@ -48,4 +48,3 @@ declarations:
   no_collusion: true
   honeypot_check_done: true
   reproduction_tested: true
-
