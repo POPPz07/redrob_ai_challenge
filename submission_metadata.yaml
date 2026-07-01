@@ -12,13 +12,13 @@ team_members:
 
 github_repo: "https://github.com/POPPz07/redrob_ai_challenge.git"
 sandbox_link: "TODO"
-reproduce_command: "python reproduce.py --candidates ./candidates.jsonl --out ./submission.csv"
+reproduce_command: "python rank.py --candidates ./candidates.jsonl --out ./submission.csv"
 
 compute:
   platform: "Local Windows laptop"
   cpu_cores: 16
-  ram_gb: 0  # TODO: replace with installed RAM
-  python_version: "3.11"
+  ram_gb: 16
+  python_version: "3.11.5"
   os: "Windows"
   uses_gpu_for_inference: false
   has_network_during_ranking: false

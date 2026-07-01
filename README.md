@@ -1,4 +1,4 @@
-﻿# Bug Solvers Redrob Candidate Ranker
+# Bug Solvers Redrob Candidate Ranker
 
 Deterministic, CPU-only candidate discovery and ranking for the Redrob Intelligent Candidate Discovery & Ranking Challenge.
 
@@ -6,8 +6,10 @@ Deterministic, CPU-only candidate discovery and ranking for the Redrob Intellige
 
 - Team: **Bug Solvers**
 - Dataset processed locally: 100,000 candidates
+- Tested compute: 16 logical CPU cores and 16 GB RAM
 - Output: exactly 100 ranked candidates
 - Final rank runtime: approximately 5-8 seconds on the tested laptop
+- Measured peak ranking working set: approximately 2.0 GB
 - Offline precompute: approximately 65 minutes with BGE neural embeddings at below-normal process priority
 - Production artifact size: approximately 325 MB
 - Organizer CSV validator: passing
@@ -265,13 +267,13 @@ If base artifacts are missing, `rank.py` automatically invokes this deterministi
 
 ## Produce The Submission
 
-Exact Stage-3 reproduction after setup/model download:
+Full neural artifact rebuild plus submission generation (precomputation may exceed the five-minute ranking window):
 
 ```powershell
 python reproduce.py --candidates India_runs_data_and_ai_challenge/candidates.jsonl --artifacts-dir artifacts --out submission.csv
 ```
 
-When production artifacts exist, run inference only:
+Exact Stage-3 ranking command after documented precomputation:
 
 ```powershell
 python rank.py --candidates India_runs_data_and_ai_challenge/candidates.jsonl --artifacts-dir artifacts --out submission.csv
@@ -343,7 +345,9 @@ Tested on Windows with Python 3.11.5 and 16 logical CPU cores:
 | BGE plus FAISS precompute | about 61.9 minutes at below-normal priority |
 | Total offline precompute | about 65.2 minutes |
 | Final rank | about 5-8 seconds |
+| Peak ranking working set | about 2.0 GB |
 | Rerank pool | 12,000 |
+| Pool sensitivity | same top-100 membership at 8K, 12K, and 15K |
 | Production artifacts | about 325.3 MB |
 | FAISS index | about 36.6 MB |
 | Organizer validator | Pass |
@@ -412,7 +416,6 @@ Before portal upload, replace the `TODO` values in `submission_metadata.yaml`:
 
 - Primary contact name, email, and phone.
 - Team member names, emails, and roles.
-- Installed laptop RAM.
 - Registered participant/team ID.
 - Hosted sandbox URL.
 
