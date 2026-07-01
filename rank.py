@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import csv
@@ -100,6 +100,8 @@ def retrieve_pool(
         + 0.08 * features["high_signal_title"].to_numpy()
         + 0.08 * features["skill_trust_score"].to_numpy()
         + 0.06 * features["weighted_formula_score"].to_numpy()
+        + 0.16 * features["rare_expert_narrative"].to_numpy()
+        + 0.04 * features["career_narrative_strength"].to_numpy()
     )
     rule = rule - 0.20 * features["honeypot_risk"].to_numpy() - 0.12 * features["keyword_stuffing_penalty"].to_numpy()
 
@@ -107,6 +109,7 @@ def retrieve_pool(
         (features["high_signal_title"].to_numpy() > 0)
         | ((features["technical_title"].to_numpy() > 0) & (features["retrieval_ranking_depth"].to_numpy() > 0.25))
         | ((features["career_system_fit"].to_numpy() > 0.55) & (features["production_ml_depth"].to_numpy() > 0.35))
+        | (features["rare_expert_narrative"].to_numpy() > 0)
     )
     candidates: set[int] = set(top_indices(sparse_scores, pool_size // 2))
     candidates.update(top_indices(svd_scores, pool_size // 2))
@@ -166,6 +169,19 @@ def predict_scores(pool_df: pd.DataFrame, artifacts_dir: Path) -> np.ndarray:
 
 def apply_final_gates(df: pd.DataFrame, scores: np.ndarray) -> np.ndarray:
     gated = scores.astype(np.float64).copy()
+    gated += 0.030 * df["sparse_score_norm"].to_numpy()
+    gated += 0.025 * df["dense_score_norm"].to_numpy()
+    gated += 0.055 * df["colbert_maxsim_score"].to_numpy()
+    gated += 0.025 * df["production_ml_depth"].to_numpy()
+    gated += 0.015 * df["product_company_fit"].to_numpy()
+    gated += 0.010 * df["experience_fit"].to_numpy()
+    gated += 0.150 * df["rare_expert_narrative"].to_numpy()
+    gated += 0.025 * df["current_rare_expert_narrative"].to_numpy()
+    gated += 0.025 * df["career_narrative_strength"].to_numpy()
+    gated += 0.015 * df["high_relevance_narrative_count"].to_numpy()
+    gated -= 0.035 * df["keyword_stuffing_penalty"].to_numpy()
+    gated -= 0.025 * df["title_mismatch_penalty"].to_numpy()
+
     suspicious_consistency = (
         (df["honeypot_risk"].to_numpy() >= 0.30)
         & (df["consistency_score"].to_numpy() < 0.65)
@@ -177,14 +193,6 @@ def apply_final_gates(df: pd.DataFrame, scores: np.ndarray) -> np.ndarray:
     gated *= np.where(df["no_production_evidence"].to_numpy() >= 1.0, 0.60, 1.0)
     gated *= np.where(df["outside_india_penalty"].to_numpy() >= 1.0, 0.55, 1.0)
     gated *= np.where(df["inactive_low_response_penalty"].to_numpy() >= 1.0, 0.50, 1.0)
-    gated += 0.030 * df["sparse_score_norm"].to_numpy()
-    gated += 0.025 * df["dense_score_norm"].to_numpy()
-    gated += 0.055 * df["colbert_maxsim_score"].to_numpy()
-    gated += 0.025 * df["production_ml_depth"].to_numpy()
-    gated += 0.015 * df["product_company_fit"].to_numpy()
-    gated += 0.010 * df["experience_fit"].to_numpy()
-    gated -= 0.035 * df["keyword_stuffing_penalty"].to_numpy()
-    gated -= 0.025 * df["title_mismatch_penalty"].to_numpy()
     # Preserve score separation above 1.0. Clipping here creates large tie groups
     # and silently turns candidate_id into the primary top-rank signal.
     return gated
@@ -197,6 +205,14 @@ def calibrated_output_scores(scores: np.ndarray) -> np.ndarray:
     for idx in range(1, len(calibrated)):
         calibrated[idx] = min(calibrated[idx], calibrated[idx - 1] - 0.000001)
     return calibrated
+
+
+def select_top_candidates(pool_features: pd.DataFrame, top_n: int) -> pd.DataFrame:
+    return pool_features.sort_values(
+        ["final_score", "candidate_id"],
+        ascending=[False, True],
+        kind="mergesort",
+    ).head(top_n).copy()
 
 
 def main() -> None:
@@ -273,7 +289,7 @@ def main() -> None:
     raw_scores = predict_scores(pool_features, artifacts_dir)
     final_scores = apply_final_gates(pool_features, raw_scores)
     pool_features["final_score"] = final_scores
-    ranked = pool_features.sort_values(["final_score", "candidate_id"], ascending=[False, True], kind="mergesort").head(args.top_n).copy()
+    ranked = select_top_candidates(pool_features, args.top_n)
     ranked["rank"] = np.arange(1, len(ranked) + 1)
     ranked["score"] = calibrated_output_scores(ranked["final_score"].to_numpy())
     ranked["reasoning"] = [reasoning_for_row(row, int(row["rank"])) for row in ranked.to_dict("records")]

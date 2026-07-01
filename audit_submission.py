@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 from pathlib import Path
@@ -38,8 +38,14 @@ def main() -> None:
         "evaluation_experimentation_fit",
         "python_engineering_fit",
         "skill_trust_score",
+        "career_narrative_band",
+        "career_narrative_strength",
+        "rare_expert_narrative",
+        "current_rare_expert_narrative",
+        "high_relevance_narrative_count",
         "consistency_score",
         "honeypot_risk",
+        "suspicious_expert_skill_count",
         "keyword_stuffing_penalty",
         "services_penalty",
         "reason_concern",
@@ -55,6 +61,8 @@ def main() -> None:
         "retrieval_ranking_depth",
         "production_ml_depth",
         "evaluation_experimentation_fit",
+        "career_narrative_strength",
+        "behavioral_availability_fit",
         "consistency_score",
     ]].mean().round(3).to_dict()
     print("Top-10 mean signals:", means)

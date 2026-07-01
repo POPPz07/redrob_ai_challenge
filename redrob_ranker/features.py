@@ -4,6 +4,7 @@ import json
 import math
 import re
 from datetime import date
+from functools import lru_cache
 from typing import Any, Iterable
 
 
@@ -255,6 +256,47 @@ ASPECT_QUERIES = {
     "finetuning": "llm fine tuning lora qlora peft transformers rag",
 }
 
+NARRATIVE_RELEVANCE_TERMS = {
+    "candidate-jd",
+    "discovery",
+    "embedding",
+    "matching layer",
+    "personalization",
+    "ranking",
+    "ranker",
+    "recommendation",
+    "relevance",
+    "relevant content",
+    "relevant matches",
+    "retrieval",
+    "search",
+}
+
+NARRATIVE_PRODUCTION_TERMS = {
+    "a/b test",
+    "built",
+    "deployed",
+    "infrastructure",
+    "latency",
+    "millions",
+    "owned",
+    "production",
+    "rollout",
+    "scale",
+    "shipped",
+}
+
+NARRATIVE_EVALUATION_TERMS = {
+    "calibration",
+    "evaluation",
+    "experiment",
+    "human judgments",
+    "metrics",
+    "ndcg",
+    "offline",
+    "online",
+}
+
 NUMERIC_FEATURES = [
     "years_experience",
     "title_fit",
@@ -285,6 +327,12 @@ NUMERIC_FEATURES = [
     "inactive_low_response_penalty",
     "github_score_norm",
     "market_signal_score",
+    "career_narrative_strength",
+    "career_narrative_band",
+    "current_narrative_band",
+    "rare_expert_narrative",
+    "current_rare_expert_narrative",
+    "high_relevance_narrative_count",
     "weighted_formula_score",
 ]
 
@@ -311,6 +359,102 @@ def term_hits(text: str, terms: Iterable[str]) -> int:
 
 def term_score(text: str, terms: Iterable[str], scale: float = 5.0) -> float:
     return clamp(term_hits(text, terms) / scale)
+
+
+def description_frequency_band(frequency: int) -> int:
+    """Return the empirical career-narrative frequency band from 0 to 5."""
+    if frequency <= 0:
+        return 0
+    if frequency > 20_000:
+        return 0
+    if frequency > 5_000:
+        return 1
+    if frequency > 1_000:
+        return 2
+    if frequency > 100:
+        return 3
+    if frequency > 20:
+        return 4
+    return 5
+
+
+@lru_cache(maxsize=4096)
+def narrative_description_profile(
+    description: str,
+    frequency: int,
+) -> tuple[int, float, bool, bool]:
+    band = description_frequency_band(frequency)
+    relevance_hits = term_hits(description, NARRATIVE_RELEVANCE_TERMS)
+    production_hits = term_hits(description, NARRATIVE_PRODUCTION_TERMS)
+    evaluation_hits = term_hits(description, NARRATIVE_EVALUATION_TERMS)
+    semantic = clamp(
+        0.50 * clamp(relevance_hits / 3.0)
+        + 0.28 * clamp(production_hits / 3.0)
+        + 0.22 * clamp(evaluation_hits / 2.0)
+    )
+    band_score = band / 5.0
+    strength = band_score * (
+        0.62 + 0.38 * semantic if relevance_hits else 0.12 * semantic
+    )
+    rare_expert = (
+        band == 5
+        and relevance_hits > 0
+        and (production_hits > 0 or evaluation_hits > 0)
+    )
+    high_relevance = band >= 4 and relevance_hits > 0
+    return band, strength, rare_expert, high_relevance
+
+
+def career_narrative_features(
+    histories: list[dict[str, Any]],
+    description_frequencies: dict[str, int] | None,
+) -> dict[str, float]:
+    empty = {
+        "career_narrative_strength": 0.0,
+        "career_narrative_band": 0.0,
+        "current_narrative_band": 0.0,
+        "rare_expert_narrative": 0.0,
+        "current_rare_expert_narrative": 0.0,
+        "high_relevance_narrative_count": 0.0,
+    }
+    if not description_frequencies:
+        return empty
+
+    strongest = 0.0
+    max_band = 0
+    current_band = 0
+    rare_expert = 0.0
+    current_rare_expert = 0.0
+    high_relevance_count = 0
+    for job in histories:
+        description = clean_text(job.get("description"))
+        frequency = int(description_frequencies.get(description, 0))
+        if not description or frequency <= 0:
+            continue
+        band, strength, is_rare_expert, high_relevance = narrative_description_profile(
+            description,
+            frequency,
+        )
+        max_band = max(max_band, band)
+        if job.get("is_current"):
+            current_band = max(current_band, band)
+        strongest = max(strongest, strength)
+
+        if high_relevance:
+            high_relevance_count += 1
+        if is_rare_expert:
+            rare_expert = 1.0
+            if job.get("is_current"):
+                current_rare_expert = 1.0
+
+    return {
+        "career_narrative_strength": strongest,
+        "career_narrative_band": max_band / 5.0,
+        "current_narrative_band": current_band / 5.0,
+        "rare_expert_narrative": rare_expert,
+        "current_rare_expert_narrative": current_rare_expert,
+        "high_relevance_narrative_count": clamp(high_relevance_count / 3.0),
+    }
 
 
 def parse_date(value: Any) -> date | None:
@@ -419,14 +563,16 @@ def _skill_trust(candidate: dict[str, Any], career_low: str) -> tuple[float, int
         low = name.lower()
         if not name:
             continue
+        duration = int(skill.get("duration_months") or 0)
+        prof = skill.get("proficiency", "")
+        if prof == "expert" and duration <= 1:
+            suspicious_expert += 1
         is_jd = any(term in low or low in term for term in RETRIEVAL_TERMS | ML_TERMS | EVAL_TERMS | PYTHON_ENGINEERING_TERMS)
         if not is_jd:
             continue
         ai_skill_count += 1
-        duration = int(skill.get("duration_months") or 0)
         endorsements = int(skill.get("endorsements") or 0)
         assess = assessments.get(low, 0.0)
-        prof = skill.get("proficiency", "")
         local = 0.10
         if low in career_low:
             local += 0.45
@@ -440,8 +586,6 @@ def _skill_trust(candidate: dict[str, Any], career_low: str) -> tuple[float, int
             local += 0.10
         if prof == "expert":
             local += 0.08
-            if duration <= 1:
-                suspicious_expert += 1
         trusted += clamp(local)
     return clamp(trusted / 5.0), ai_skill_count, suspicious_expert
 
@@ -490,7 +634,10 @@ def _notice_score(days: Any) -> float:
     return 0.14
 
 
-def extract_features(candidate: dict[str, Any]) -> dict[str, Any]:
+def extract_features(
+    candidate: dict[str, Any],
+    description_frequencies: dict[str, int] | None = None,
+) -> dict[str, Any]:
     profile = candidate.get("profile", {})
     red = candidate.get("redrob_signals", {})
     views = candidate_text_views(candidate)
@@ -502,6 +649,7 @@ def extract_features(candidate: dict[str, Any]) -> dict[str, Any]:
     years = float(profile.get("years_of_experience") or 0.0)
     companies, industries = _company_sets(candidate)
     histories = candidate.get("career_history", [])
+    narrative = career_narrative_features(histories, description_frequencies)
 
     retrieval_depth = clamp(
         0.52 * term_score(career_low + " " + evidence_low, RETRIEVAL_TERMS, 4.0)
@@ -694,6 +842,7 @@ def extract_features(candidate: dict[str, Any]) -> dict[str, Any]:
         "inactive_low_response_penalty": inactive_low_response,
         "github_score_norm": github_norm,
         "market_signal_score": market_signal,
+        **narrative,
         "weighted_formula_score": formula_score,
         "ai_skill_count": ai_skill_count,
         "suspicious_expert_skill_count": suspicious_expert,
@@ -754,7 +903,7 @@ def strongest_concern(
     if title in NONTECH_TITLES:
         return "current title is not a core AI engineering title"
     try:
-        if float(notice) > 90:
+        if float(notice) > 30:
             return f"{int(float(notice))}-day notice period"
     except (TypeError, ValueError):
         pass
@@ -780,6 +929,8 @@ def pseudo_label(row: dict[str, Any]) -> float:
         + 0.04 * row["behavioral_availability_fit"]
     )
     label += 0.04 if row["high_signal_title"] else 0.0
+    label += 0.16 * row.get("rare_expert_narrative", 0.0)
+    label += 0.04 * row.get("career_narrative_strength", 0.0)
     label -= 0.25 * row["honeypot_risk"]
     label -= 0.13 * row["keyword_stuffing_penalty"]
     label -= 0.10 * row["services_penalty"]
@@ -796,15 +947,60 @@ def reasoning_for_row(row: dict[str, Any], rank: int) -> str:
     location = clean_text(row.get("location"))
     response = float(row.get("recruiter_response_rate") or 0.0)
     notice = int(row.get("notice_period_days") or 0)
-    opener = f"{title} with {years:.1f} yrs"
-    if row.get("high_signal_title"):
-        opener = f"Strong title fit: {opener}"
-    elif rank > 70:
-        opener = f"Lower-rank fit: {opener}"
-    if evidence:
-        text = f"{opener}; evidence: {evidence}"
+    aspects = {
+        "retrieval and ranking systems": float(row.get("retrieval_ranking_depth") or 0.0),
+        "production ML delivery": float(row.get("production_ml_depth") or 0.0),
+        "evaluation and experimentation": float(
+            row.get("evaluation_experimentation_fit") or 0.0
+        ),
+        "product engineering": float(row.get("product_company_fit") or 0.0),
+    }
+    if aspects["retrieval and ranking systems"] >= 0.60:
+        theme = "retrieval and ranking systems"
+    elif aspects["evaluation and experimentation"] >= 0.65:
+        theme = "evaluation and experimentation"
+    elif aspects["production ML delivery"] >= 0.60:
+        theme = "production ML delivery"
     else:
-        text = opener
+        theme = max(aspects, key=aspects.get)
+    elite = bool(row.get("rare_expert_narrative")) or (
+        float(row.get("career_system_fit") or 0.0) >= 0.70
+        and aspects["retrieval and ranking systems"] >= 0.60
+        and aspects["production ML delivery"] >= 0.50
+    )
+    variant = rank % 3
+    if rank <= 10 and elite:
+        openers = [
+            f"Top-tier {theme}: {title} with {years:.1f} yrs",
+            f"{title} brings {years:.1f} yrs and stands out for {theme}",
+            f"At {years:.1f} yrs, {title} is a top-tier {theme} match",
+        ]
+    elif rank <= 10:
+        openers = [
+            f"Ranked {theme} option: {title} with {years:.1f} yrs",
+            f"{title} offers {years:.1f} yrs with relative {theme} value",
+            f"At {years:.1f} yrs, {title} is a supporting {theme} option",
+        ]
+    elif rank <= 50:
+        openers = [
+            f"Strong {theme} fit: {title} with {years:.1f} yrs",
+            f"{title} offers {years:.1f} yrs with credible {theme}",
+            f"At {years:.1f} yrs, {title} shows strong {theme}",
+        ]
+    elif rank <= 80:
+        openers = [
+            f"Solid {theme} fit: {title} with {years:.1f} yrs",
+            f"{title} adds {years:.1f} yrs of useful {theme}",
+            f"At {years:.1f} yrs, {title} remains credible for {theme}",
+        ]
+    else:
+        openers = [
+            f"Top-100 {theme} depth: {title} with {years:.1f} yrs",
+            f"{title} retains top-100 value through {years:.1f} yrs in {theme}",
+            f"At {years:.1f} yrs, {title} provides top-100 supporting {theme}",
+        ]
+    opener = openers[variant]
+    text = f"{opener}; evidence: {evidence.rstrip(' .;')}" if evidence else opener
     signal_bits = []
     if location:
         signal_bits.append(location)
@@ -812,9 +1008,9 @@ def reasoning_for_row(row: dict[str, Any], rank: int) -> str:
         signal_bits.append(f"{response:.2f} recruiter response")
     if notice <= 30:
         signal_bits.append(f"{notice}-day notice")
-    elif notice >= 120:
+    else:
         signal_bits.append(f"concern: {notice}-day notice")
-    if concern and f"{notice}-day notice" not in concern:
+    if concern and "notice period" not in concern:
         signal_bits.append(f"concern: {concern}")
     if signal_bits:
         text += ". " + "; ".join(signal_bits)

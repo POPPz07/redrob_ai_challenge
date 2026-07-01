@@ -5,6 +5,7 @@ import json
 import subprocess
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 
 import joblib
@@ -15,7 +16,7 @@ from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import normalize
 
-from redrob_ranker.features import ASPECT_QUERIES, extract_features
+from redrob_ranker.features import ASPECT_QUERIES, clean_text, extract_features
 from redrob_ranker.neural_retrieval import MODEL_PATH, build_neural_artifacts
 
 
@@ -27,22 +28,72 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--svd-dim", type=int, default=192)
     parser.add_argument("--skip-model", action="store_true")
     parser.add_argument("--skip-neural", action="store_true")
+    parser.add_argument(
+        "--features-only",
+        action="store_true",
+        help="Refresh feature Parquet and ranker model while preserving retrieval artifacts.",
+    )
     parser.add_argument("--model-path", default=str(MODEL_PATH))
     parser.add_argument("--embedding-batch-size", type=int, default=128)
     return parser.parse_args()
 
 
 def load_candidates(path: Path) -> pd.DataFrame:
+    description_frequencies: Counter[str] = Counter()
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            candidate = json.loads(line)
+            description_frequencies.update(
+                description
+                for description in (
+                    clean_text(job.get("description"))
+                    for job in candidate.get("career_history", [])
+                )
+                if description
+            )
+    print(
+        f"found {len(description_frequencies):,} unique career narratives "
+        f"across {sum(description_frequencies.values()):,} jobs"
+    )
+
     rows = []
     started = time.perf_counter()
     with path.open("r", encoding="utf-8") as f:
         for i, line in enumerate(f, 1):
             if line.strip():
-                rows.append(extract_features(json.loads(line)))
+                rows.append(
+                    extract_features(
+                        json.loads(line),
+                        description_frequencies=description_frequencies,
+                    )
+                )
             if i % 25000 == 0:
                 print(f"parsed {i:,} candidates in {time.perf_counter() - started:.1f}s")
     return pd.DataFrame(rows)
 
+
+def existing_neural_metadata(artifacts_dir: Path) -> dict[str, object]:
+    index_path = artifacts_dir / "dense_index.faiss"
+    query_path = artifacts_dir / "dense_query_embedding.npy"
+    if not index_path.exists() or not query_path.exists():
+        return {}
+    try:
+        import faiss
+
+        index = faiss.read_index(str(index_path))
+        return {
+            "faiss_available": True,
+            "faiss_index_type": type(index).__name__,
+            "faiss_count": int(index.ntotal),
+            "faiss_dimension": int(index.d),
+            "faiss_index_bytes": int(index_path.stat().st_size),
+            "neural_model": "BAAI/bge-small-en-v1.5",
+        }
+    except Exception as exc:
+        print(f"existing FAISS metadata unavailable: {exc}")
+        return {}
 
 
 def main() -> None:
@@ -63,6 +114,50 @@ def main() -> None:
     ]
     df[text_cols].to_parquet(artifacts_dir / "candidate_text_views.parquet", index=False)
     df[feature_keep].to_parquet(artifacts_dir / "candidates_features.parquet", index=False)
+
+    if args.features_only:
+        required = [
+            "tfidf_vectorizer.joblib",
+            "tfidf_matrix.npz",
+            "dense_svd.joblib",
+            "dense_embeddings.npy",
+        ]
+        missing = [name for name in required if not (artifacts_dir / name).exists()]
+        if missing:
+            raise FileNotFoundError(
+                f"Cannot use --features-only; missing retrieval artifacts: {missing}"
+            )
+        if not args.skip_model:
+            subprocess.run(
+                [
+                    sys.executable,
+                    "retrain_ranker.py",
+                    "--artifacts-dir",
+                    str(artifacts_dir),
+                ],
+                check=True,
+            )
+        metadata_path = artifacts_dir / "precompute_metadata.json"
+        metadata = (
+            json.loads(metadata_path.read_text(encoding="utf-8"))
+            if metadata_path.exists()
+            else {}
+        )
+        metadata.update(
+            {
+                "candidate_count": int(len(df)),
+                "feature_refresh_only": True,
+                "feature_refresh_seconds": round(time.perf_counter() - started, 3),
+            }
+        )
+        metadata.update(existing_neural_metadata(artifacts_dir))
+        if (artifacts_dir / "ranker_model.joblib").exists():
+            payload = joblib.load(artifacts_dir / "ranker_model.joblib")
+            metadata["model_available"] = True
+            metadata["feature_columns"] = payload["feature_cols"]
+        metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+        print(json.dumps(metadata, indent=2))
+        return
 
     retrieval_text = (
         df["evidence_text"].fillna("")
@@ -118,6 +213,8 @@ def main() -> None:
             batch_size=args.embedding_batch_size,
         )
         metadata.update(neural_metadata)
+    else:
+        metadata.update(existing_neural_metadata(artifacts_dir))
     if not args.skip_model:
         subprocess.run(
             [

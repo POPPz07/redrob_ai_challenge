@@ -23,7 +23,7 @@ compute:
   uses_gpu_for_inference: false
   has_network_during_ranking: false
   pre_computation_required: true
-  pre_computation_time_minutes: 66
+  pre_computation_time_minutes: 74
 
 ai_tools_used:
   - "OpenAI Codex"
@@ -37,6 +37,7 @@ methodology_summary: |
   CPU-only deterministic hybrid candidate ranker. It extracts career,
   profile, weighted-skill, and compressed evidence views; combines TF-IDF,
   BGE sentence embeddings with a compact FAISS index, exact rule/title recall,
+  semantic narrative-rarity features that recover plain-language experts,
   structured product/retrieval/production/evaluation features, behavioral
   availability, and consistency/honeypot penalties; and applies an XGBoost
   pseudo-relevance reranker with a transparent formula fallback. Final

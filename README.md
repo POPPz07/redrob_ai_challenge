@@ -8,14 +8,15 @@ Deterministic, CPU-only candidate discovery and ranking for the Redrob Intellige
 - Dataset processed locally: 100,000 candidates
 - Tested compute: 16 logical CPU cores and 16 GB RAM
 - Output: exactly 100 ranked candidates
-- Final rank runtime: approximately 5-8 seconds on the tested laptop
-- Measured peak ranking working set: approximately 2.0 GB
-- Offline precompute: approximately 65 minutes with BGE neural embeddings at below-normal process priority
+- Final rank runtime: approximately 9-15 seconds internally on the tested laptop
+- Measured peak ranking working set: approximately 1.9 GB
+- Offline precompute: approximately 65-75 minutes with BGE neural embeddings; feature-only refresh approximately 6.8 minutes
 - Production artifact size: approximately 325 MB
 - Organizer CSV validator: passing
 - Deterministic offline rerun: passing and byte-identical
 - Neural retrieval: `BAAI/bge-small-en-v1.5` plus FAISS
 - Final ML model: retrieval-aware XGBoost weak-supervision regressor
+- Verified improved submission SHA-256: `17C219DF15032204934B30C078DE5939969DD546BC5DEA4C330F7861991D68C7`
 - Hosted demo: implemented in `app.py`; deployment URL remains pending
 
 No hidden-ground-truth labels are provided by the organizers. The solution therefore uses transparent weak supervision, explicit evidence features, adversarial-profile gates, organizer samples, and manual top-rank auditing. No solution can honestly guarantee the hidden leaderboard result before evaluation.
@@ -42,10 +43,12 @@ flowchart LR
     B --> E["BGE-small 384-dim embeddings"]
     E --> F["FAISS 8-bit inner-product index"]
     B --> G["Structured fit, behavior, and risk features"]
+    B --> G2["Semantic narrative rarity and expert archetypes"]
     C --> H["Hybrid recall union"]
     D --> H
     F --> H
     G --> H
+    G2 --> H
     H --> I["12K rerank pool"]
     I --> J["Lexical MaxSim JD-aspect features"]
     J --> K["Retrieval-aware XGBoost plus explicit gates"]
@@ -64,6 +67,8 @@ flowchart LR
 - `all_text`: combined normalized text for feature extraction.
 
 It also creates structured features covering title fit, career evidence, retrieval/ranking depth, production ML, evaluation, Python, company context, experience, location, behavior, skill trust, consistency, honeypot risk, stuffing, services-only history, and other disqualifiers.
+
+Career descriptions have only 44 distinct narratives across 300,171 jobs and form six sharply separated frequency bands. The ranker treats rarity as an information prior only when the narrative also contains semantic search, ranking, recommendation, matching, production, or evaluation evidence. This recovers rare plain-language expert profiles without promoting arbitrary rare text or hard-coding candidate IDs.
 
 ### Hybrid Candidate Generation
 
@@ -95,6 +100,10 @@ The scalar-quantized index achieved approximately 99% recall@100 against a flat 
 ### Late Interaction
 
 The instructions allow ColBERT to fall back when its model/index/runtime cost is unsuitable. The production build uses a transparent CPU lexical MaxSim approximation over compressed evidence. It tokenizes each candidate once, caches JD query tokens, and scores retrieval, ranking, evaluation, production, Python, shipping, and fine-tuning aspects. It reports `colbert_available=0` and never pretends that contextual ColBERT ran.
+
+### Cross-Encoder Experiment
+
+A 22.7M-parameter MiniLM cross-encoder was benchmarked on the top 300 and intentionally rejected from production. It scored 300 pairs in 9.591 seconds and separated the rare expert band from the rest with AUC 0.7438, but it strongly preferred explicit keyword-heavy profiles and under-scored the organizer's plain-language expert archetypes. A 5% blend produced no proxy gain; larger blends displaced expert candidates. The production ranker therefore remains smaller, faster, and less vulnerable to wording style.
 
 ### Final ML Reranker
 
@@ -148,6 +157,7 @@ Reasoning is deterministic and uses only extracted candidate facts:
 - Strongest source evidence from the profile/career record.
 - Location, response, notice, or availability when useful.
 - An honest concern when applicable.
+- Rank-aware tone and deterministic phrasing variation across retrieval, evaluation, production, and product themes.
 
 There are no hosted LLM calls and no generated facts during ranking.
 
@@ -159,6 +169,7 @@ artifacts/                     Generated production artifacts; intentionally Git
 build_neural_index.py          Resumable BGE embedding and FAISS builder
 demo_ranker.py                 <=100-candidate hosted-demo ranking core
 download_model.py              One-time public BGE model downloader
+evaluate_proxy.py              Transparent local archetype regression evaluator
 precompute.py                  End-to-end offline artifact generation
 rank.py                        Constrained no-network ranking command
 reproduce.py                   Single full neural reproduction command
@@ -249,6 +260,12 @@ artifacts/neural_embeddings.tmp.npy
 
 If interrupted, run the same command again and it resumes from the last completed checkpoint. Temporary embedding files are removed after the FAISS index is written.
 
+When only structured feature logic changes, preserve retrieval indexes and refresh features plus XGBoost:
+
+```powershell
+python precompute.py --candidates India_runs_data_and_ai_challenge/candidates.jsonl --artifacts-dir artifacts --features-only
+```
+
 When base artifacts already exist, rebuild only neural retrieval and retrain XGBoost:
 
 ```powershell
@@ -313,6 +330,14 @@ Run full integration checks:
 python run_checks.py --candidates India_runs_data_and_ai_challenge/candidates.jsonl --submission submission.csv --artifacts-dir artifacts
 ```
 
+Evaluate against the transparent local archetype proxy:
+
+```powershell
+python evaluate_proxy.py --candidates India_runs_data_and_ai_challenge/candidates.jsonl --submission submission.csv --artifacts-dir artifacts
+```
+
+The proxy uses empirical narrative-frequency bands and is explicitly not organizer ground truth. It is a regression guard for the dataset's known plain-language expert pattern, not a leaderboard estimate.
+
 Create a fact-level audit CSV for manual top-10/top-50 review:
 
 ```powershell
@@ -327,6 +352,7 @@ python audit_submission.py --submission submission.csv --artifacts-dir artifacts
 - Every selected ID exists in the full JSONL.
 - Candidate title appears in its reasoning.
 - No high-risk inconsistent profile is selected.
+- No candidate with three or more zero-duration expert skills is selected.
 - Known obvious sample traps do not enter the top 50.
 - The clear sample recommendation engineer remains in scope.
 - Ranking modules contain no common network-client imports.
@@ -341,28 +367,34 @@ Tested on Windows with Python 3.11.5 and 16 logical CPU cores:
 | Measurement | Result |
 |---|---:|
 | Candidate count | 100,000 |
-| Base precompute | about 3.3 minutes |
+| Base precompute | about 11.8 minutes for latest full CPU refresh |
+| Feature-only refresh | about 6.8 minutes |
 | BGE plus FAISS precompute | about 61.9 minutes at below-normal priority |
-| Total offline precompute | about 65.2 minutes |
-| Final rank | about 5-8 seconds |
-| Peak ranking working set | about 2.0 GB |
+| Total offline precompute | about 73-75 minutes from measured stages |
+| Final rank | about 9-15 seconds internal time |
+| Peak ranking working set | about 1.9 GB |
 | Rerank pool | 12,000 |
 | Pool sensitivity | same top-100 membership at 8K, 12K, and 15K |
-| Production artifacts | about 325.3 MB |
+| Production artifacts | about 325.4 MB |
 | FAISS index | about 36.6 MB |
 | Organizer validator | Pass |
 | Deterministic offline rerun | Pass |
-| Unit tests | Pass |
+| Local proxy NDCG@10 | 1.000000, up from 0.573505 |
+| Local proxy NDCG@50 | 0.939534, up from 0.688359 |
+| Local proxy composite | 0.844703, up from 0.556103 |
+| Rare expert profiles in top 10 | 10, up from 2 |
+| Unit tests | 9 passing |
 
 Final top-10 audit means at the last verified run:
 
 | Signal | Mean |
 |---|---:|
-| Career/system fit | 0.885 |
-| Retrieval/ranking depth | 0.961 |
-| Production ML depth | 0.808 |
-| Evaluation/experimentation | 0.945 |
-| Consistency | 0.988 |
+| Career/system fit | 0.738 |
+| Retrieval/ranking depth | 0.948 |
+| Production ML depth | 0.825 |
+| Evaluation/experimentation | 0.980 |
+| Behavioral availability | 0.802 |
+| Consistency | 0.989 |
 
 The top 100 had no profile matching the strong inconsistency gate. The maximum-risk audit and all hard-penalty checks passed.
 
@@ -485,7 +517,8 @@ https://github.com/POPPz07/redrob_ai_challenge.git
 - [x] Full 100K candidate precompute completed.
 - [x] BGE and FAISS neural retrieval completed.
 - [x] Retrieval-aware XGBoost trained.
-- [x] Honeypot and consistency gates audited.
+- [x] Honeypot, chronology, and zero-duration expert-skill gates audited.
+- [x] Plain-language expert archetypes recovered and proxy-regression tested.
 - [x] Organizer validator passes.
 - [x] Offline deterministic rerun passes.
 - [x] Unit tests pass.
@@ -501,6 +534,8 @@ https://github.com/POPPz07/redrob_ai_challenge.git
 ## Technical References
 
 - [Sentence Transformers semantic search](https://www.sbert.net/examples/sentence_transformer/applications/semantic-search/README.html)
+- [Sentence Transformers retrieve and rerank](https://www.sbert.net/examples/sentence_transformer/applications/retrieve_rerank/README.html)
+- [ColBERT official repository](https://github.com/stanford-futuredata/ColBERT)
 - [BGE-small model card](https://huggingface.co/BAAI/bge-small-en-v1.5)
 - [FAISS indexes](https://github.com/facebookresearch/faiss/wiki/Faiss-indexes)
 - [XGBoost learning to rank](https://xgboost.readthedocs.io/en/stable/tutorials/learning_to_rank.html)

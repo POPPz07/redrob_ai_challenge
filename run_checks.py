@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import ast
@@ -82,6 +82,11 @@ def main() -> None:
         (selected["honeypot_risk"] >= 0.30) & (selected["consistency_score"] < 0.65)
     ]
     assert suspicious.empty, f"high-risk inconsistent candidates selected: {suspicious.index.tolist()}"
+    expert_zero = selected[selected["suspicious_expert_skill_count"] >= 3]
+    assert expert_zero.empty, (
+        "candidates with multiple zero-duration expert skills selected: "
+        f"{expert_zero.index.tolist()}"
+    )
     for row in rows:
         title = str(selected.loc[row["candidate_id"], "current_title"])
         assert title.lower() in row["reasoning"].lower(), f"title missing from reasoning: {row['candidate_id']}"
