@@ -40,7 +40,6 @@ India_runs_data_and_ai_challenge/*
 !India_runs_data_and_ai_challenge/candidate_schema.json
 !India_runs_data_and_ai_challenge/sample_candidates.json
 !India_runs_data_and_ai_challenge/sample_submission.csv
-!India_runs_data_and_ai_challenge/submission_metadata_template.yaml
 
 artifacts/
 outputs/
