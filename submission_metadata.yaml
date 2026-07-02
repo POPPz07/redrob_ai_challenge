@@ -1,15 +1,23 @@
 team_name: "Bug Solvers"
 
 primary_contact:
-  name: "TODO"
-  email: "TODO"
+  name: "Virendra Pawar"
+  email: "virendrapawar1402@gmail.com"
   phone: "TODO"
 
 team_members:
-  - name: "TODO"
-    email: "TODO"
-    role: "TODO"
-
+  - name: "Virendra Pawar"
+    email: "virendrapawar1402@gmail.com"
+    role: "Team Lead"
+  - name: "Sarthak Kotkar"
+    email: "kotkarsarthak2004@gmail.com"
+    role: "Team Member"
+  - name: "Rohan Mohite"
+    email: "rohanmohite140404@gmail.com"
+    role: "Team Member"
+  - name: "Soham Miniyar"
+    email: "sohamminiyar2022.comp@mmcoe.edu.in"
+    role: "Team Member"
 github_repo: "https://github.com/POPPz07/redrob_ai_challenge.git"
 sandbox_link: "https://huggingface.co/spaces/optimumpride/bug-solvers-redrob-ranker"
 reproduce_command: "python rank.py --candidates ./candidates.jsonl --artifacts-dir ./artifacts --out ./submission.csv"
