@@ -18,7 +18,6 @@ Deterministic, CPU-only candidate discovery and ranking for the Redrob Intellige
 - Final ML model: retrieval-aware XGBoost weak-supervision regressor
 - Verified improved submission SHA-256: `17C219DF15032204934B30C078DE5939969DD546BC5DEA4C330F7861991D68C7`
 - Hosted demo: local HTTP and deterministic package tests pass; deployment URL remains pending
-- Blind human evaluation: optional 200-profile, two-reviewer audit tooling verified
 
 No hidden-ground-truth labels are provided by the organizers. The solution therefore uses transparent weak supervision, explicit evidence features, adversarial-profile gates, organizer samples, and manual top-rank auditing. No solution can honestly guarantee the hidden leaderboard result before evaluation.
 
@@ -172,7 +171,6 @@ build_space_package.py          Minimal self-contained Hugging Face Space packag
 demo_ranker.py                 <=100-candidate hosted-demo ranking core
 download_model.py              One-time public BGE model downloader
 evaluate_proxy.py              Transparent local archetype regression evaluator
-evaluation/                    Blinded human-label sampling, workbooks, and metrics
 precompute.py                  End-to-end offline artifact generation
 rank.py                        Constrained no-network ranking command
 reproduce.py                   Single full neural reproduction command
@@ -185,7 +183,6 @@ redrob_ranker/neural_retrieval.py Resumable neural encoding and FAISS utilities
 tests/test_ranker.py           Unit tests
 requirements.txt               Pinned production/development dependencies
 requirements-space.txt         Minimal local hosted-demo dependencies
-requirements-evaluation.txt    Evaluation-only workbook dependency
 submission_metadata.yaml       Portal and Stage-3 metadata
 ```
 
@@ -342,16 +339,6 @@ python evaluate_proxy.py --candidates India_runs_data_and_ai_challenge/candidate
 
 The proxy uses empirical narrative-frequency bands and is explicitly not organizer ground truth. It is a regression guard for the dataset's known plain-language expert pattern, not a leaderboard estimate.
 
-Create and evaluate the independent 200-profile blind human audit:
-
-```powershell
-python evaluation\create_annotation_sample.py
-node evaluation\build_annotation_workbooks.mjs
-python evaluation\finalize_annotation_workbooks.py
-python evaluation\evaluate_annotations.py --require-complete
-```
-
-The private reviewer files and ID key are Git-ignored. The optional pack uses two independent reviewers and a hidden stratified 120-profile development / 80-profile holdout split. Holdout metrics require the explicit `--unlock-holdout` flag after configuration freeze. See `evaluation/README.md` for the rubric, adjudication rules, and promotion criteria. This audit is not required by the organizer and no human NDCG claim is made.
 
 Create a fact-level audit CSV for manual top-10/top-50 review:
 
@@ -543,7 +530,6 @@ https://github.com/POPPz07/redrob_ai_challenge.git
 - [x] Public-repository secret scan passes.
 - [x] Raw and derived candidate data excluded from Git.
 - [x] Hosted-demo code implemented and local HTTP tested.
-- [x] Blind evaluation pack and analysis tooling verified.
 - [ ] Team/contact/participant metadata supplied.
 - [ ] Hugging Face Space deployed and URL recorded.
 - [ ] Final portal filename applied.
@@ -559,6 +545,5 @@ https://github.com/POPPz07/redrob_ai_challenge.git
 - [Hugging Face Spaces](https://huggingface.co/docs/hub/main/spaces-overview)
 - [Hugging Face Spaces configuration](https://huggingface.co/docs/hub/spaces-config-reference)
 - [scikit-learn NDCG](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.ndcg_score.html)
-- [scikit-learn Cohen kappa](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.cohen_kappa_score.html)
 
 
