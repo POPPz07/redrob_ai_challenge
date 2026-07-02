@@ -17,7 +17,7 @@ Deterministic, CPU-only candidate discovery and ranking for the Redrob Intellige
 - Neural retrieval: `BAAI/bge-small-en-v1.5` plus FAISS
 - Final ML model: retrieval-aware XGBoost weak-supervision regressor
 - Verified improved submission SHA-256: `17C219DF15032204934B30C078DE5939969DD546BC5DEA4C330F7861991D68C7`
-- Hosted demo: local HTTP and deterministic package tests pass; deployment URL remains pending
+- Hosted demo: deployed and live at `https://huggingface.co/spaces/optimumpride/bug-solvers-redrob-ranker`
 
 No hidden-ground-truth labels are provided by the organizers. The solution therefore uses transparent weak supervision, explicit evidence features, adversarial-profile gates, organizer samples, and manual top-rank auditing. No solution can honestly guarantee the hidden leaderboard result before evaluation.
 
@@ -531,7 +531,7 @@ https://github.com/POPPz07/redrob_ai_challenge.git
 - [x] Raw and derived candidate data excluded from Git.
 - [x] Hosted-demo code implemented and local HTTP tested.
 - [ ] Team/contact/participant metadata supplied.
-- [ ] Hugging Face Space deployed and URL recorded.
+- [x] Hugging Face Space deployed and URL recorded.
 - [ ] Final portal filename applied.
 
 ## Technical References
