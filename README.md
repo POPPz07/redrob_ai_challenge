@@ -18,7 +18,7 @@ Deterministic, CPU-only candidate discovery and ranking for the Redrob Intellige
 - Final ML model: retrieval-aware XGBoost weak-supervision regressor
 - Verified improved submission SHA-256: `17C219DF15032204934B30C078DE5939969DD546BC5DEA4C330F7861991D68C7`
 - Hosted demo: local HTTP and deterministic package tests pass; deployment URL remains pending
-- Blind human evaluation: verified 200-profile, two-reviewer pack generated; labels remain pending
+- Blind human evaluation: optional 200-profile, two-reviewer audit tooling verified
 
 No hidden-ground-truth labels are provided by the organizers. The solution therefore uses transparent weak supervision, explicit evidence features, adversarial-profile gates, organizer samples, and manual top-rank auditing. No solution can honestly guarantee the hidden leaderboard result before evaluation.
 
@@ -351,7 +351,7 @@ python evaluation\finalize_annotation_workbooks.py
 python evaluation\evaluate_annotations.py --require-complete
 ```
 
-The private reviewer files and ID key are Git-ignored. The pack uses two independent reviewers and a hidden stratified 120-profile development / 80-profile holdout split. Holdout metrics require the explicit `--unlock-holdout` flag after configuration freeze. See `evaluation/README.md` for the rubric, adjudication rules, and promotion criteria. Labels are still pending, so no current human NDCG claim is made.
+The private reviewer files and ID key are Git-ignored. The optional pack uses two independent reviewers and a hidden stratified 120-profile development / 80-profile holdout split. Holdout metrics require the explicit `--unlock-holdout` flag after configuration freeze. See `evaluation/README.md` for the rubric, adjudication rules, and promotion criteria. This audit is not required by the organizer and no human NDCG claim is made.
 
 Create a fact-level audit CSV for manual top-10/top-50 review:
 
@@ -544,8 +544,6 @@ https://github.com/POPPz07/redrob_ai_challenge.git
 - [x] Raw and derived candidate data excluded from Git.
 - [x] Hosted-demo code implemented and local HTTP tested.
 - [x] Blind evaluation pack and analysis tooling verified.
-- [ ] Two independent reviewers complete all 200 labels.
-- [ ] Development tuning frozen and holdout metrics evaluated.
 - [ ] Team/contact/participant metadata supplied.
 - [ ] Hugging Face Space deployed and URL recorded.
 - [ ] Final portal filename applied.

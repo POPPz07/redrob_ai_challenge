@@ -11,8 +11,8 @@ team_members:
     role: "TODO"
 
 github_repo: "https://github.com/POPPz07/redrob_ai_challenge.git"
-sandbox_link: "TODO"
-reproduce_command: "python rank.py --candidates ./candidates.jsonl --out ./submission.csv"
+sandbox_link: "https://huggingface.co/spaces/optimumpride/bug-solvers-redrob-ranker"
+reproduce_command: "python rank.py --candidates ./candidates.jsonl --artifacts-dir ./artifacts --out ./submission.csv"
 
 compute:
   platform: "Local Windows laptop"
