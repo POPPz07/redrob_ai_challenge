@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 from pathlib import Path
 
 import numpy as np
@@ -10,8 +11,15 @@ from redrob_ranker.features import extract_features, reasoning_for_row, stable_m
 from redrob_ranker.late_interaction import score_late_interaction
 
 
+MAX_DEMO_FILE_BYTES = 5_000_000
+CANDIDATE_ID_PATTERN = re.compile(r"^CAND_[0-9]{7}$")
+REQUIRED_SECTIONS = ("profile", "career_history", "education", "skills", "redrob_signals")
+
+
 def load_demo_candidates(path: str | Path) -> list[dict]:
     source = Path(path)
+    if source.stat().st_size > MAX_DEMO_FILE_BYTES:
+        raise ValueError("Candidate file exceeds the 5 MB hosted-demo limit.")
     text = source.read_text(encoding="utf-8-sig").strip()
     if not text:
         raise ValueError("Candidate file is empty.")
@@ -23,6 +31,19 @@ def load_demo_candidates(path: str | Path) -> list[dict]:
         raise ValueError("Expected a JSON list or JSONL candidate file.")
     if len(candidates) > 100:
         raise ValueError("The hosted demo accepts at most 100 candidates.")
+    if any(not isinstance(candidate, dict) for candidate in candidates):
+        raise ValueError("Every candidate must be a JSON object.")
+
+    candidate_ids = [candidate.get("candidate_id") for candidate in candidates]
+    if any(
+        not isinstance(candidate_id, str) or not CANDIDATE_ID_PATTERN.fullmatch(candidate_id)
+        for candidate_id in candidate_ids
+    ):
+        raise ValueError("Every candidate_id must match CAND_ followed by seven digits.")
+    if len(set(candidate_ids)) != len(candidate_ids):
+        raise ValueError("Candidate IDs must be unique within the uploaded file.")
+    if any(any(section not in candidate for section in REQUIRED_SECTIONS) for candidate in candidates):
+        raise ValueError("Each candidate is missing one or more required profile sections.")
     return candidates
 
 

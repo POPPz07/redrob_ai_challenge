@@ -43,3 +43,5 @@ India_runs_data_and_ai_challenge/*
 !India_runs_data_and_ai_challenge/submission_metadata_template.yaml
 
 artifacts/
+outputs/
+node_modules/

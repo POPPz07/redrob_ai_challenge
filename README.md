@@ -17,7 +17,8 @@ Deterministic, CPU-only candidate discovery and ranking for the Redrob Intellige
 - Neural retrieval: `BAAI/bge-small-en-v1.5` plus FAISS
 - Final ML model: retrieval-aware XGBoost weak-supervision regressor
 - Verified improved submission SHA-256: `17C219DF15032204934B30C078DE5939969DD546BC5DEA4C330F7861991D68C7`
-- Hosted demo: implemented in `app.py`; deployment URL remains pending
+- Hosted demo: local HTTP and deterministic package tests pass; deployment URL remains pending
+- Blind human evaluation: verified 200-profile, two-reviewer pack generated; labels remain pending
 
 No hidden-ground-truth labels are provided by the organizers. The solution therefore uses transparent weak supervision, explicit evidence features, adversarial-profile gates, organizer samples, and manual top-rank auditing. No solution can honestly guarantee the hidden leaderboard result before evaluation.
 
@@ -167,9 +168,11 @@ There are no hosted LLM calls and no generated facts during ranking.
 app.py                         Gradio sample demo
 artifacts/                     Generated production artifacts; intentionally Git-ignored
 build_neural_index.py          Resumable BGE embedding and FAISS builder
+build_space_package.py          Minimal self-contained Hugging Face Space package builder
 demo_ranker.py                 <=100-candidate hosted-demo ranking core
 download_model.py              One-time public BGE model downloader
 evaluate_proxy.py              Transparent local archetype regression evaluator
+evaluation/                    Blinded human-label sampling, workbooks, and metrics
 precompute.py                  End-to-end offline artifact generation
 rank.py                        Constrained no-network ranking command
 reproduce.py                   Single full neural reproduction command
@@ -181,7 +184,8 @@ redrob_ranker/late_interaction.py  CPU lexical MaxSim fallback
 redrob_ranker/neural_retrieval.py Resumable neural encoding and FAISS utilities
 tests/test_ranker.py           Unit tests
 requirements.txt               Pinned production/development dependencies
-requirements-space.txt         Minimal hosted-demo dependencies
+requirements-space.txt         Minimal local hosted-demo dependencies
+requirements-evaluation.txt    Evaluation-only workbook dependency
 submission_metadata.yaml       Portal and Stage-3 metadata
 ```
 
@@ -338,6 +342,17 @@ python evaluate_proxy.py --candidates India_runs_data_and_ai_challenge/candidate
 
 The proxy uses empirical narrative-frequency bands and is explicitly not organizer ground truth. It is a regression guard for the dataset's known plain-language expert pattern, not a leaderboard estimate.
 
+Create and evaluate the independent 200-profile blind human audit:
+
+```powershell
+python evaluation\create_annotation_sample.py
+node evaluation\build_annotation_workbooks.mjs
+python evaluation\finalize_annotation_workbooks.py
+python evaluation\evaluate_annotations.py --require-complete
+```
+
+The private reviewer files and ID key are Git-ignored. The pack uses two independent reviewers and a hidden stratified 120-profile development / 80-profile holdout split. Holdout metrics require the explicit `--unlock-holdout` flag after configuration freeze. See `evaluation/README.md` for the rubric, adjudication rules, and promotion criteria. Labels are still pending, so no current human NDCG claim is made.
+
 Create a fact-level audit CSV for manual top-10/top-50 review:
 
 ```powershell
@@ -383,7 +398,7 @@ Tested on Windows with Python 3.11.5 and 16 logical CPU cores:
 | Local proxy NDCG@50 | 0.939534, up from 0.688359 |
 | Local proxy composite | 0.844703, up from 0.556103 |
 | Rare expert profiles in top 10 | 10, up from 2 |
-| Unit tests | 9 passing |
+| Unit tests | 12 passing |
 
 Final top-10 audit means at the last verified run:
 
@@ -433,14 +448,15 @@ Local core-logic test from the production environment:
 python -c "from demo_ranker import rank_demo_file; print(rank_demo_file('India_runs_data_and_ai_challenge/sample_candidates.json', 'demo_output.csv'))"
 ```
 
-For a Hugging Face Gradio Space, deploy:
+Build the exact self-contained Hugging Face repository:
 
-- `app.py`
-- `demo_ranker.py`
-- `redrob_ranker/`
-- `requirements-space.txt` renamed to `requirements.txt` in the Space repository
+```powershell
+python build_space_package.py
+```
 
-The final `sandbox_link` must be added to `submission_metadata.yaml` after deployment. Hugging Face credentials must never be committed.
+The generated `outputs/huggingface_space/` package contains root-level Space metadata, `app.py`, the ranking core, the public 50-profile sample, and only the required dependencies. It has been verified for deterministic CSV output, duplicate/invalid/oversized upload rejection, and local HTTP `200`. Hugging Face expects the YAML configuration at the top of the Space `README.md` and extra Python packages in root `requirements.txt`.
+
+Deploy this generated directory to a public Gradio Space. The final `sandbox_link` must be added to `submission_metadata.yaml` after deployment. Hugging Face credentials must never be committed.
 
 ## Submission Metadata Still Required From The Team
 
@@ -526,7 +542,10 @@ https://github.com/POPPz07/redrob_ai_challenge.git
 - [x] Rank runtime is below five minutes.
 - [x] Public-repository secret scan passes.
 - [x] Raw and derived candidate data excluded from Git.
-- [x] Hosted-demo code implemented.
+- [x] Hosted-demo code implemented and local HTTP tested.
+- [x] Blind evaluation pack and analysis tooling verified.
+- [ ] Two independent reviewers complete all 200 labels.
+- [ ] Development tuning frozen and holdout metrics evaluated.
 - [ ] Team/contact/participant metadata supplied.
 - [ ] Hugging Face Space deployed and URL recorded.
 - [ ] Final portal filename applied.
@@ -540,5 +559,8 @@ https://github.com/POPPz07/redrob_ai_challenge.git
 - [FAISS indexes](https://github.com/facebookresearch/faiss/wiki/Faiss-indexes)
 - [XGBoost learning to rank](https://xgboost.readthedocs.io/en/stable/tutorials/learning_to_rank.html)
 - [Hugging Face Spaces](https://huggingface.co/docs/hub/main/spaces-overview)
+- [Hugging Face Spaces configuration](https://huggingface.co/docs/hub/spaces-config-reference)
+- [scikit-learn NDCG](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.ndcg_score.html)
+- [scikit-learn Cohen kappa](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.cohen_kappa_score.html)
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 import rank
+from demo_ranker import load_demo_candidates
 from redrob_ranker.features import (
     NUMERIC_FEATURES,
     career_narrative_features,
@@ -108,6 +110,43 @@ class RankerUnitTests(unittest.TestCase):
             ranked["candidate_id"].tolist(),
             ["CAND_0000001", "CAND_0000002"],
         )
+
+    def test_demo_rejects_duplicate_candidate_ids(self) -> None:
+        candidate = {
+            "candidate_id": "CAND_0000001",
+            "profile": {},
+            "career_history": [],
+            "education": [],
+            "skills": [],
+            "redrob_signals": {},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "duplicates.json"
+            path.write_text(json.dumps([candidate, candidate]), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "unique"):
+                load_demo_candidates(path)
+
+    def test_demo_rejects_invalid_candidate_id(self) -> None:
+        candidate = {
+            "candidate_id": "candidate-1",
+            "profile": {},
+            "career_history": [],
+            "education": [],
+            "skills": [],
+            "redrob_signals": {},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "invalid.json"
+            path.write_text(json.dumps([candidate]), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "seven digits"):
+                load_demo_candidates(path)
+
+    def test_demo_rejects_oversized_upload(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "oversized.json"
+            path.write_bytes(b" " * 5_000_001)
+            with self.assertRaisesRegex(ValueError, "5 MB"):
+                load_demo_candidates(path)
 
     def test_reasoning_uses_supplied_facts_and_rank_tone(self) -> None:
         reasoning = reasoning_for_row(
