@@ -3,7 +3,7 @@ team_name: "Bug Solvers"
 primary_contact:
   name: "Virendra Pawar"
   email: "virendrapawar1402@gmail.com"
-  phone: "TODO"
+  phone: "Provided in submission portal"
 
 team_members:
   - name: "Virendra Pawar"
@@ -20,7 +20,7 @@ team_members:
     role: "Team Member"
 github_repo: "https://github.com/POPPz07/redrob_ai_challenge.git"
 sandbox_link: "https://huggingface.co/spaces/optimumpride/bug-solvers-redrob-ranker"
-reproduce_command: "python rank.py --candidates ./candidates.jsonl --artifacts-dir ./artifacts --out ./submission.csv"
+reproduce_command: "python rank.py --candidates India_runs_data_and_ai_challenge/candidates.jsonl --artifacts-dir artifacts --out submission.csv"
 
 compute:
   platform: "Local Windows laptop"

@@ -86,12 +86,23 @@ India_runs_data_and_ai_challenge/sample_candidates.json
 
 The hosted sandbox demonstrates sample ranking with the same feature extraction, safety gates, evidence matching, and reasoning logic. The complete 100,000-candidate FAISS/XGBoost pipeline runs locally using the commands below.
 
+To run the sample sandbox locally, use its separate lightweight environment:
+
+```powershell
+py -3.11 -m venv .venv-demo
+& .\.venv-demo\Scripts\Activate.ps1
+python -m pip install -r requirements-space.txt
+python app.py
+```
+
+Open `http://127.0.0.1:7860` and upload `sample_candidates.json`. Keep demo dependencies separate from the production `.venv`.
+
 ## Local Setup
 
 ### Requirements
 
 - Python 3.11
-- CPU with up to 16 GB RAM
+- 16 GB RAM recommended for the verified full precomputation
 - Git
 - Organizer-provided `candidates.jsonl`
 - Internet access only for initial package and model installation
@@ -201,6 +212,8 @@ run_checks.py                   Integration, safety, runtime and determinism tes
 audit_submission.py             Fact-level top-100 audit
 tests/test_ranker.py            Unit tests
 submission_metadata.yaml        Submission declarations and compute metadata
+requirements.txt                Pinned production dependencies
+requirements-space.txt          Pinned lightweight demo dependencies
 ```
 
 Raw candidate data, generated artifacts, local models, virtual environments, submissions, credentials, and private planning documents are excluded from Git.
